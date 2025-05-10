@@ -34,9 +34,7 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
   char key = keypad.getKey();
-  // lcd.clear();
   
   if (key) {
     // Serial.println(key);
