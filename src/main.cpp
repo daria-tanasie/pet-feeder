@@ -2,6 +2,7 @@
 #include <DIYables_Keypad.h>
 #include <Wire.h>
 #include <LCD_I2C.h>
+#include <Servo.h>
 
 const int ROW_NUM = 4;
 const int COLUMN_NUM = 4;
@@ -22,6 +23,9 @@ LCD_I2C lcd(0x27, 16, 2);
 uint8_t col_lcd = 0;
 uint8_t row_lcd = 0;
 
+Servo servo;
+int servo_pos = 0;
+
 void setup() {
   lcd.begin();
   lcd.backlight();
@@ -31,6 +35,9 @@ void setup() {
   Serial.begin(9600);
   delay(1000);
   Serial.println("Keypad 4x4 example");
+
+  servo.attach(10);
+  servo.write(servo_pos);
 }
 
 void loop() {
@@ -51,6 +58,25 @@ void loop() {
       col_lcd++;
     }
     lcd.setCursor(col_lcd, row_lcd);
+
+    if (key == 'A') {
+      servo_pos += 90;
+      servo.write(servo_pos);
+      delay(15);
+    }
+
+    if (key == '1') {
+      servo_pos -= 90;
+      servo.write(servo_pos);
+      delay(15);
+    }
+
+
   }
+
+  // for (servo_pos = 180; servo_pos >= 0; servo_pos -= 1) { // goes from 180 degrees to 0 degrees
+    // servo.write(servo_pos);              // tell servo to go to position in variable 'pos'
+    // delay(15);                       // waits 15 ms for the servo to reach the position
+  // }
 
 }
