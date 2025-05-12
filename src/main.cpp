@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include <LCD_I2C.h>
 #include <Servo.h>
+#include <DS3231.h>
 
 const int ROW_NUM = 4;
 const int COLUMN_NUM = 4;
@@ -26,6 +27,16 @@ uint8_t row_lcd = 0;
 Servo servo;
 int servo_pos = 0;
 
+DS3231 rtc;
+bool century = false;
+bool h12Flag;
+bool pmFlag;
+
+const int targetHour = 22;
+const int targetMinute = 54;
+
+bool hasTriggered = false;
+
 void setup() {
   lcd.begin();
   lcd.backlight();
@@ -38,45 +49,69 @@ void setup() {
 
   servo.attach(10);
   servo.write(servo_pos);
+
+  Wire.begin();
+  // Serial.begin(57600);
+
+  // rtc.setClockMode(false); // 24h mode
+  // rtc.setYear(25);
+  // rtc.setMonth(5);
+  // rtc.setDate(12);
+  // rtc.setHour(22);
+  // rtc.setMinute(43);
+  // rtc.setSecond(0);
+
 }
 
 void loop() {
   char key = keypad.getKey();
-  
-  if (key) {
-    // Serial.println(key);
-    lcd.print(key);
-    delay(200);
-    if (col_lcd == 17 && row_lcd == 0) {
-      row_lcd = 1;
-      col_lcd = 0;
-    } else if (col_lcd == 16 && row_lcd == 1) {
-      lcd.clear();
-      row_lcd = 0;
-      col_lcd = 0;
-    } else {
-      col_lcd++;
-    }
-    lcd.setCursor(col_lcd, row_lcd);
 
-    if (key == 'A') {
-      servo_pos += 90;
-      servo.write(servo_pos);
-      delay(15);
-    }
+  int currentHour = rtc.getHour(h12Flag, pmFlag);
+  int currentMinute = rtc.getMinute();
 
-    if (key == '1') {
-      servo_pos -= 90;
-      servo.write(servo_pos);
-      delay(15);
-    }
-
-
+  if (currentHour == targetHour && currentMinute == targetMinute && !hasTriggered) {
+    servo.write(90);
+    delay(1000);
+    servo.write(0);
+    hasTriggered = true;
   }
 
-  // for (servo_pos = 180; servo_pos >= 0; servo_pos -= 1) { // goes from 180 degrees to 0 degrees
-    // servo.write(servo_pos);              // tell servo to go to position in variable 'pos'
-    // delay(15);                       // waits 15 ms for the servo to reach the position
+  if (currentMinute != targetMinute) {
+    hasTriggered = false;
+  }
+
+  delay(1000);
+
+  
+  // if (key) {
+  //   // Serial.println(key);
+  //   lcd.print(key);
+  //   delay(200);
+  //   if (col_lcd == 17 && row_lcd == 0) {
+  //     row_lcd = 1;
+  //     col_lcd = 0;
+  //   } else if (col_lcd == 16 && row_lcd == 1) {
+  //     lcd.clear();
+  //     row_lcd = 0;
+  //     col_lcd = 0;
+  //   } else {
+  //     col_lcd++;
+  //   }
+  //   lcd.setCursor(col_lcd, row_lcd);
+
+  //   if (key == 'A') {
+  //     servo_pos += 90;
+  //     servo.write(servo_pos);
+  //     delay(15);
+  //   }
+
+    // if (key == '1') {
+    //   servo_pos -= 90;
+    //   servo.write(servo_pos);
+    //   delay(15);
+    // }
+
+
   // }
 
 }
