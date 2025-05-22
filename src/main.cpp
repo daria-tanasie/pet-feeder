@@ -29,7 +29,6 @@ Servo servo;
 int servo_pos = 0;
 
 DS3231 rtc;
-bool century = false;
 bool h12Flag;
 bool pmFlag;
 
@@ -46,8 +45,11 @@ meal meals[20];
 int idx_meals = 0;
 int nr_meals = 0;
 
+bool setup_done = false;
+
 void button_isr() {
   button_pressed = true;
+  setup_done = true;
 }
 
 int get_nr_meals() {
@@ -62,14 +64,10 @@ int get_nr_meals() {
     char key = keypad.getKey();
 
     if (key >= '0' && key <= '9') {
-      if (user_input.length() >= 2) {
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print("sure?;)");
-      } else {
         user_input += key;
+        lcd.setCursor(0, 1);
+        Serial.println(user_input);
         lcd.print(user_input);
-      }
     } else if (key == '*') {
       if (user_input.length() > 0) {
         lcd.clear();
@@ -77,6 +75,12 @@ int get_nr_meals() {
         delay(1000);
         return user_input.toInt();
       }
+    } else if (key == 'D') {
+      user_input.remove(user_input.length() - 1);
+      lcd.setCursor(0, 1);
+      Serial.println(user_input);
+      lcd.print(user_input);
+      lcd.print(" ");
     }
   }
 }
@@ -98,16 +102,20 @@ void set_time() {
       char key = keypad.getKey();
 
       if (cursor == 5) {
-        meals[i].min = user_input.substring(user_input.length() - 2).toInt();
+        meals[i].min = user_input.toInt();
         break;
       }
 
       if ((cursor == 3 || cursor == 4) && key >= '0' && key <= '9') {
         user_input += key;
-        Serial.println(user_input);
-        lcd.setCursor(cursor, 1);
-        cursor++;
-        lcd.print(key);
+        if (cursor == 3 && user_input.toInt() > 5) {
+          user_input = "";
+        } else {
+          Serial.println(user_input);
+          lcd.setCursor(cursor, 1);
+          cursor++;
+          lcd.print(key);
+        }
       }
 
       if (cursor == 2) {
@@ -123,10 +131,18 @@ void set_time() {
       if ((cursor == 0 || cursor == 1 )
                 && key >= '0' && key <= '9') {
         user_input += key;
-        Serial.println(user_input);
-        lcd.setCursor(cursor, 1);
-        cursor++;
-        lcd.print(key);
+
+        if (user_input.toInt() > 2 && cursor == 0) {
+          user_input = "";
+        } else if (cursor == 1 && user_input[0] == '2'
+                      && user_input.toInt() > 23) {
+          user_input = "2";
+        } else {
+          Serial.println(user_input);
+          lcd.setCursor(cursor, 1);
+          cursor++;
+          lcd.print(key);
+        }
       }
     }
     delay(1000);
@@ -141,12 +157,15 @@ void swap_meals(int i, int j) {
 }
 
 void sort_times() {
-  int current_time = min_of_day(rtc.getHour(h12Flag, pmFlag), rtc.getMinute());
+  double current_time = min_of_day(rtc.getHour(h12Flag, pmFlag), rtc.getMinute());
+  Serial.println(current_time);
 
   for (int i = 0; i < nr_meals - 1; i++) {
     for (int j = i + 1; j < nr_meals; j++) {
-      int ti = min_of_day(meals[i].hour, meals[i].min) - current_time;
-      int tj = min_of_day(meals[j].hour, meals[j].min) - current_time;
+      double ti = min_of_day(meals[i].hour, meals[i].min) - current_time;
+      Serial.println(ti);
+      double tj = min_of_day(meals[j].hour, meals[j].min) - current_time;
+      Serial.println(tj);
 
       if (ti * tj < 0 && ti < tj) {
         swap_meals(i, j);
@@ -168,7 +187,6 @@ int button1 = 2;
 void setup() {
   lcd.begin();
   lcd.backlight();
-
   lcd.setCursor(0, 0);
 
   Serial.begin(9600);
@@ -176,7 +194,7 @@ void setup() {
   delay(1000);
 
   servo.attach(11);
-  servo.write(0);
+  servo.write(20);
 
   Wire.begin();
 
@@ -187,17 +205,25 @@ void setup() {
   // rtc.setHour(18);
   // rtc.setMinute(58);
   // rtc.setSecond(0);
+
   pinMode(button1, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(button1), button_isr, FALLING);
 }
 
 void loop() {
 
-  // if (arduinoSer.available()) {
-  //   String msg = arduinoSer.readStringUntil('\n');
-  //   msg.trim();
-  //   Serial.println(msg);
-  // }
+  while(!setup_done) {
+    lcd.setCursor(0, 0);
+    lcd.print("Hi!:) Press the");
+    lcd.setCursor(0, 1);
+    lcd.print("red button!");
+  }
+
+  if (arduinoSer.available()) {
+    String msg = arduinoSer.readStringUntil('\n');
+    msg.trim();
+    Serial.println(msg);
+  }
 
   int current_hour = rtc.getHour(h12Flag, pmFlag);
   int current_minute = rtc.getMinute();
@@ -206,23 +232,38 @@ void loop() {
         && current_minute == meals[idx_meals].min) {
     servo.write(90);
     delay(1000);
-    servo.write(0);
+    servo.write(20);
     idx_meals++;
     if (idx_meals >= nr_meals) {
       idx_meals = 0;
     }
-    // aici sa dea esp32 mesaj
-    // arduinoSer.println("send_msg");
+    // mesaj catre esp32
+    arduinoSer.println("send_msg");
   }
 
   int next_feed_m = min_of_day(meals[idx_meals].hour, meals[idx_meals].min)
                       - min_of_day(current_hour, current_minute);
+
   lcd.setCursor(0, 0);
   lcd.print("Next feed in:");
   lcd.setCursor(0, 1);
-  lcd.printf("%d minutes", next_feed_m);
-  // de rezolvat: cand urmatoarea masa e maine
-  // sa apara din 5 in 5 minute, la final un minut
+  
+  // cand urmatoarea masa e maine
+  if (next_feed_m < 0) {
+    next_feed_m = 60*24 + next_feed_m;
+  }
+
+  if (next_feed_m >= 60 && next_feed_m < 120) {
+    int left_h = next_feed_m / 60;
+    int left_m = next_feed_m % 60;
+    lcd.printf("%d hour, %d min", left_h, left_m);
+  } else if (next_feed_m >= 120) {
+    int left_h = next_feed_m / 60;
+    int left_m = next_feed_m % 60;
+    lcd.printf("%d hours, %d min", left_h, left_m);
+  } else if (next_feed_m < 60) {
+    lcd.printf("%d min", next_feed_m);
+  }
 
 
   if (button_pressed) {
