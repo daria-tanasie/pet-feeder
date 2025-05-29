@@ -249,11 +249,10 @@ void loop() {
 
   int current_hour = rtc.getHour(h12Flag, pmFlag);
   int current_minute = rtc.getMinute();
-  int current_sec = rtc.getSecond();
 
   // time for food
   if (current_hour == meals[idx_meals].hour
-        && current_minute == meals[idx_meals].min && current_sec == 1) {
+        && current_minute == meals[idx_meals].min) {
     servo.write(OPEN);
     delay(1000);
     servo.write(CLOSED);
@@ -263,6 +262,15 @@ void loop() {
     }
     // message to esp32
     arduinoSer.println("send_msg");
+
+    if (nr_meals == 1) {
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("See you");
+      lcd.setCursor(0, 1);
+      lcd.print("tomorrow! :D");
+      delay(61000);
+    }
   }
 
   // minutes until next feed
