@@ -5,6 +5,11 @@
 #include <Servo.h>
 #include <DS3231.h>
 #include <SoftwareSerial.h>
+#include <avr/interrupt.h>
+
+#define OPEN 90
+#define CLOSED 20
+#define SERVO_PIN 11
 
 const int ROW_NUM = 4;
 const int COLUMN_NUM = 4;
@@ -32,7 +37,7 @@ DS3231 rtc;
 bool h12Flag;
 bool pmFlag;
 
-volatile bool button_pressed = false;
+volatile bool button_pressed = (PIND & (1 << PD2)) == 0;
 
 SoftwareSerial arduinoSer(14, 15);
 
@@ -47,11 +52,13 @@ int nr_meals = 0;
 
 bool setup_done = false;
 
-void button_isr() {
+// when the setup button is pressed
+ISR(INT0_vect) {
   button_pressed = true;
   setup_done = true;
 }
 
+// input nr of meals
 int get_nr_meals() {
   lcd.clear();
   lcd.setCursor(0, 0);
@@ -85,10 +92,12 @@ int get_nr_meals() {
   }
 }
 
+// conversion for the minute of day
 int min_of_day(int h, int m) {
   return h * 60 + m;
 }
 
+// input the feed times
 void set_time() {
   for (int i = 0; i < nr_meals; i++) {
     lcd.clear();
@@ -156,6 +165,7 @@ void swap_meals(int i, int j) {
   meals[j] = aux;
 }
 
+// sort the feed times array
 void sort_times() {
   double current_time = min_of_day(rtc.getHour(h12Flag, pmFlag), rtc.getMinute());
   Serial.println(current_time);
@@ -198,6 +208,7 @@ void setup() {
 
   Wire.begin();
 
+  // rtc setup when I used it for the first time
   // rtc.setClockMode(false);
   // rtc.setYear(25);
   // rtc.setMonth(5);
@@ -206,12 +217,22 @@ void setup() {
   // rtc.setMinute(58);
   // rtc.setSecond(0);
 
-  pinMode(button1, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(button1), button_isr, FALLING);
+  // pd2 = input && pull up resistor
+  DDRD &= ~(1 << PD2);
+  PORTD |= (1 << PD2);
+
+  // interrupt on falling edge isc01 = 0, isc00 = 1
+  EICRA &= ~(1 << ISC01);
+  EICRA |= (1 << ISC00);
+  EIMSK |= (1 << INT0);
+
+  // enable interrupts
+  sei();
 }
 
 void loop() {
 
+  // wait for setup
   while(!setup_done) {
     lcd.setCursor(0, 0);
     lcd.print("Hi!:) Press the");
@@ -219,6 +240,7 @@ void loop() {
     lcd.print("red button!");
   }
 
+  // check for esp32 messages
   if (arduinoSer.available()) {
     String msg = arduinoSer.readStringUntil('\n');
     msg.trim();
@@ -227,20 +249,23 @@ void loop() {
 
   int current_hour = rtc.getHour(h12Flag, pmFlag);
   int current_minute = rtc.getMinute();
+  int current_sec = rtc.getSecond();
 
+  // time for food
   if (current_hour == meals[idx_meals].hour
-        && current_minute == meals[idx_meals].min) {
-    servo.write(90);
+        && current_minute == meals[idx_meals].min && current_sec == 1) {
+    servo.write(OPEN);
     delay(1000);
-    servo.write(20);
+    servo.write(CLOSED);
     idx_meals++;
     if (idx_meals >= nr_meals) {
       idx_meals = 0;
     }
-    // mesaj catre esp32
+    // message to esp32
     arduinoSer.println("send_msg");
   }
 
+  // minutes until next feed
   int next_feed_m = min_of_day(meals[idx_meals].hour, meals[idx_meals].min)
                       - min_of_day(current_hour, current_minute);
 
@@ -248,11 +273,12 @@ void loop() {
   lcd.print("Next feed in:");
   lcd.setCursor(0, 1);
   
-  // cand urmatoarea masa e maine
+  // next meal is tomorrow
   if (next_feed_m < 0) {
     next_feed_m = 60*24 + next_feed_m;
   }
 
+  // conversions for a prettier display
   if (next_feed_m >= 60 && next_feed_m < 120) {
     int left_h = next_feed_m / 60;
     int left_m = next_feed_m % 60;
@@ -265,7 +291,7 @@ void loop() {
     lcd.printf("%d min", next_feed_m);
   }
 
-
+  // setup button pressed
   if (button_pressed) {
     nr_meals = get_nr_meals();
     set_time();
